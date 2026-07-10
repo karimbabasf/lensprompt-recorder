@@ -70,12 +70,13 @@ Mobile browsers do not expose raw or uncompressed capture to a web app. LensProm
 
 ## Deployment
 
-The build is fully static. The project is linked to Vercel and deploys on every push to `main`. To ship a production build by hand:
+The build is fully static, so it can be hosted anywhere. This copy ships to Vercel from the CLI, which uploads the source and builds it remotely:
 
 ```bash
-npm run build
-npx vercel@latest deploy --prod
+vercel --prod
 ```
+
+For any other static host, run `npm run build` and serve the `dist` folder.
 
 ## Privacy
 
