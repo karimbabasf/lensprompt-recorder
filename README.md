@@ -1,62 +1,76 @@
-# LensPrompt Recorder
+# LensPrompt
 
-LensPrompt Recorder is an iPhone-first video recorder with a private teleprompter overlay. It lets you paste a script that is already split into sentences, record with the front camera, and read smart subtitles that advance at your speaking pace. The prompt is only shown inside the app preview; it is not burned into the exported video.
+A camera teleprompter that follows your voice. Paste a script, hit record, and read cues that keep pace with what you actually say. The prompt lives only in the app preview, so it is never burned into the recording.
 
-Live app: [lensprompt-recorder.vercel.app](https://lensprompt-recorder.vercel.app)
+[![CI](https://github.com/karimbabasf/lensprompt-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/karimbabasf/lensprompt-recorder/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4bd4c1.svg)](LICENSE)
+[![Live app](https://img.shields.io/badge/live-lensprompt--recorder.vercel.app-4bd4c1.svg)](https://lensprompt-recorder.vercel.app)
 
-## What It Does
+**[Open the live app](https://lensprompt-recorder.vercel.app)**
 
-- Records from the user-facing camera with a mirrored preview.
-- Requests 1080p HD at 60 fps with high audio and video bitrates.
-- Keeps the microphone live by default for speech-following prompt progress.
-- Advances sentence-by-sentence like karaoke, with fuzzy word matching so short improvisations do not break the flow.
-- Lets you drag, resize, reposition, and tune the prompt overlay on the phone screen.
-- Provides camera zoom controls in 0.1x steps when the browser exposes native zoom support.
-- Shows a Save to Gallery flow immediately after stopping a take, with backup download and discard options.
-- Keeps the camera preview alive between takes so the app is ready for another recording.
+## Why it is different
 
-## Important Browser Note
+A normal teleprompter scrolls at a fixed speed and you chase it. LensPrompt listens with the browser speech API and advances word by word as you speak, so the word you need next is always the bright one. Improvise for a moment and it stays calm, then catches back up.
 
-Mobile browsers do not expose true raw or uncompressed camera recording from a web app. LensPrompt requests high quality HD 60 fps capture and records with the best `MediaRecorder` format the browser supports, but Safari/Chrome still encode the video. For true ProRes or fully uncompressed capture, this would need to become a native iOS app.
+## Features
 
-## Getting Started
+- Voice-tracked prompt with fuzzy matching, so a short ad lib does not break the flow
+- Brightness-led cues: spoken text recedes, the current word carries the accent
+- Record with the front or back camera, at the best quality the device exposes
+- Draggable, resizable prompt overlay tuned with sliders for size, position, shade, and cue lines
+- Live recording timecode plus a word count and speaking-duration estimate
+- Zoom stepper when the browser reports native zoom support
+- Save straight to the camera roll through the Web Share sheet, or download a backup
+- Installable as a PWA: portrait, mobile-first, and it keeps working after the first load
+- Private by design: video, audio, and transcript never leave the device
+
+## Getting started
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Camera and microphone permissions require a secure context on iPhone, so the deployed HTTPS URL is the easiest way to test on device.
-
-For local phone testing over HTTPS:
+Open the URL Vite prints. Camera and microphone need a secure context, so on a phone use the deployed HTTPS link or run the local HTTPS server:
 
 ```bash
 npm run dev:phone
 ```
 
-## Quality Checks
+## Scripts
 
-```bash
-npm test
-npm run typecheck
-npm run build
-```
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the dev server |
+| `npm run dev:phone` | Dev server over HTTPS for on-device testing |
+| `npm run build` | Type-check and build to `dist` |
+| `npm test` | Run the Vitest suite |
+| `npm run typecheck` | Type-check without emitting |
 
-## Project Structure
+## How it works
 
-```text
-src/App.tsx                         Main recording and prompt UI
-src/hooks/useCameraRecorder.ts      Camera, MediaRecorder, zoom, and preview keepalive
-src/hooks/useSpeechRecognition.ts   Browser speech recognition wrapper
-src/lib/teleprompter.ts             Sentence splitting, fuzzy matching, and progress model
-src/lib/cameraQuality.ts            HD 60 fps constraints and zoom helpers
-src/lib/exportFlow.ts               Save, discard, and next-take state machine
-src/styles.css                      Mobile-first interface styling
-```
+| File | Responsibility |
+| --- | --- |
+| `src/lib/teleprompter.ts` | Sentence splitting, fuzzy word matching, and the progress model |
+| `src/hooks/useSpeechRecognition.ts` | Continuous Web Speech recognition with auto-restart |
+| `src/hooks/useCameraRecorder.ts` | Camera, MediaRecorder, zoom, front/back flip, preview keepalive |
+| `src/lib/cameraQuality.ts` | HD 60 fps capture constraints and zoom helpers |
+| `src/lib/exportFlow.ts` | Save, discard, and next-take state machine |
+| `src/App.tsx` | Recording surface, prompt overlay, and the settings sheet |
+
+Built with Vite, React 18, and TypeScript. There is no backend, no analytics, and no environment variables.
+
+## Browser support
+
+Voice tracking uses the Web Speech API, which is available in Chrome and Safari. Saving directly to the camera roll uses the Web Share sheet, which works best on iOS Safari. Where either is missing, the app falls back to a plain download and tells you in a status message.
+
+## A note on quality
+
+Mobile browsers do not expose raw or uncompressed capture to a web app. LensPrompt requests HD 60 fps and records with the best `MediaRecorder` format the browser supports, but Safari and Chrome still encode the video. True ProRes or uncompressed capture would require a native iOS app.
 
 ## Deployment
 
-The app is designed for static deployment on Vercel.
+The build is fully static. The project is linked to Vercel and deploys on every push to `main`. To ship a production build by hand:
 
 ```bash
 npm run build
@@ -65,8 +79,8 @@ npx vercel@latest deploy --prod
 
 ## Privacy
 
-The app runs entirely in the browser. Camera preview, speech tracking, prompt matching, and recording export happen locally on the device unless you choose to share, save, or download the recorded file.
+Everything runs in the browser. The camera preview, speech tracking, prompt matching, and export all happen on the device. Nothing is uploaded unless you choose to share or download your take.
 
 ## License
 
-Private project. Add a license before distributing or open-sourcing this repository.
+Released under the [MIT License](LICENSE).
