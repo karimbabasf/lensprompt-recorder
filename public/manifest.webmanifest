@@ -1,11 +1,12 @@
 {
   "name": "LensPrompt Recorder",
   "short_name": "LensPrompt",
+  "description": "A camera teleprompter that follows your voice.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#080806",
-  "theme_color": "#080806",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
   "icons": [
     {
       "src": "/icon.svg",
