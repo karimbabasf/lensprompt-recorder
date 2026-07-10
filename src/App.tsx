@@ -1,19 +1,15 @@
 import { PointerEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Camera from "lucide-react/dist/esm/icons/camera.js";
-import Captions from "lucide-react/dist/esm/icons/captions.js";
 import CheckCircle from "lucide-react/dist/esm/icons/check-circle.js";
-import Circle from "lucide-react/dist/esm/icons/circle.js";
 import Download from "lucide-react/dist/esm/icons/download.js";
 import ImageDown from "lucide-react/dist/esm/icons/image-down.js";
 import Maximize2 from "lucide-react/dist/esm/icons/maximize-2.js";
 import Move from "lucide-react/dist/esm/icons/move.js";
-import PanelBottomOpen from "lucide-react/dist/esm/icons/panel-bottom-open.js";
-import Play from "lucide-react/dist/esm/icons/play.js";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw.js";
-import Settings from "lucide-react/dist/esm/icons/settings.js";
 import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal.js";
-import Square from "lucide-react/dist/esm/icons/square.js";
+import SwitchCamera from "lucide-react/dist/esm/icons/switch-camera.js";
 import WandSparkles from "lucide-react/dist/esm/icons/wand-sparkles.js";
+import X from "lucide-react/dist/esm/icons/x.js";
 import { useCameraRecorder } from "./hooks/useCameraRecorder";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { applyExportEvent, createExportFlow, type ExportFlow } from "./lib/exportFlow";
@@ -56,6 +52,7 @@ const DEFAULT_OVERLAY: OverlaySettings = {
 };
 
 const OVERLAY_STORAGE_KEY = "lensprompt-overlay";
+const WORDS_PER_SECOND = 2.3;
 
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,9 +61,10 @@ function App() {
   const autoStartedRef = useRef(false);
   const lastMediaUrlRef = useRef("");
   const [script, setScript] = useState(DEFAULT_SCRIPT);
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [overlay, setOverlay] = useState<OverlaySettings>(readOverlaySettings);
   const [exportFlow, setExportFlow] = useState(createExportFlow);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const recorder = useCameraRecorder(videoRef);
   const speech = useSpeechRecognition("en-US");
   const deferredTranscript = useDeferredValue(speech.transcript);
@@ -79,6 +77,7 @@ function App() {
   const activeSentence = promptModel.sentences[progress.displaySentenceIndex];
   const secureContext = typeof window === "undefined" || window.isSecureContext;
   const recordingExtension = recorder.mimeType.includes("mp4") ? "mp4" : "webm";
+  const scriptDuration = formatReadTime(promptModel.totalWordCount);
 
   useEffect(() => {
     window.localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(overlay));
@@ -96,6 +95,35 @@ function App() {
       speech.start();
     }
   }, [recorder.startCamera, speech.isSupported, speech.start]);
+
+  // Live recording timecode.
+  useEffect(() => {
+    if (recorder.status !== "recording") {
+      setElapsedMs(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const interval = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 200);
+    return () => window.clearInterval(interval);
+  }, [recorder.status]);
+
+  // Escape closes the panel.
+  useEffect(() => {
+    if (!isPanelOpen) {
+      return;
+    }
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsPanelOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isPanelOpen]);
 
   useEffect(() => {
     if (!recorder.mediaUrl) {
@@ -259,6 +287,9 @@ function App() {
     void recorder.setZoom(nextZoom);
   };
 
+  const isStopVisual = recorder.status === "recording" || recorder.status === "finalizing";
+  const isBusyVisual = recorder.status === "requesting" || recorder.status === "starting";
+
   return (
     <main className="app-shell">
       <section className="stage" ref={stageRef} aria-label="Camera monitor">
@@ -272,7 +303,7 @@ function App() {
         {!recorder.isCameraReady && (
           <div className="empty-monitor">
             <div className="lens-mark">
-              <Camera size={44} strokeWidth={1.6} />
+              <Camera size={40} strokeWidth={1.5} />
             </div>
             <p>Camera standby</p>
           </div>
@@ -288,7 +319,7 @@ function App() {
             width: `${overlay.width}%`,
             height: `${overlay.height}%`,
             fontSize: `${overlay.fontSize}px`,
-            backgroundColor: `rgba(8, 8, 6, ${overlay.opacity / 100})`,
+            backgroundColor: `rgba(10, 10, 11, ${overlay.opacity / 100})`,
           }}
           onPointerDown={handleOverlayPointerDown}
           onPointerMove={handleOverlayPointerMove}
@@ -297,13 +328,9 @@ function App() {
         >
           <div className="overlay-toolbar">
             <span>
-              <Move size={14} />
-              drag
+              <Move size={13} />
             </span>
-            <span>
-              <Captions size={15} />
-              {Math.round(progress.progressRatio * 100)}%
-            </span>
+            <span className="overlay-progress">{Math.round(progress.progressRatio * 100)}%</span>
           </div>
 
           <div className="cue-stack">
@@ -319,7 +346,7 @@ function App() {
                 ),
               )
             ) : (
-              <p className="empty-script">Paste your script to begin.</p>
+              <p className="empty-script">Add a script to begin.</p>
             )}
           </div>
 
@@ -333,28 +360,30 @@ function App() {
           <button
             className="resize-handle"
             type="button"
-            aria-label="Resize subtitle overlay"
+            aria-label="Resize prompt"
             data-resize="true"
           >
-            <Maximize2 size={18} />
+            <Maximize2 size={16} data-resize="true" />
           </button>
         </article>
 
-        <div className="transport compact">
+        {recorder.status === "recording" && (
+          <div className="timecode" role="timer" aria-live="off">
+            <span className="dot" />
+            {formatClock(elapsedMs)}
+          </div>
+        )}
+
+        <div className="transport">
           <button
-            className={recorder.isRecording ? "record-button recording" : "record-button"}
+            className="control"
             type="button"
-            onClick={handleRecordPress}
-            disabled={recorder.isBusy}
-            aria-label={getRecordAriaLabel(recorder.status)}
+            onClick={() => void recorder.flipCamera()}
+            aria-label="Flip camera"
           >
-            {recorder.isRecording || recorder.status === "finalizing" ? (
-              <Square size={23} fill="currentColor" />
-            ) : (
-              <Circle size={25} fill="currentColor" />
-            )}
-            <span>{getRecordLabel(recorder.status, Boolean(recorder.mediaBlob))}</span>
+            <SwitchCamera size={22} />
           </button>
+
           {recorder.zoom.isSupported && (
             <div className="zoom-stepper" aria-label="Camera zoom">
               <button
@@ -363,7 +392,7 @@ function App() {
                 disabled={recorder.zoom.value <= recorder.zoom.min}
                 aria-label="Zoom out"
               >
-                -
+                &minus;
               </button>
               <span>{recorder.zoom.value.toFixed(1)}x</span>
               <button
@@ -376,14 +405,23 @@ function App() {
               </button>
             </div>
           )}
+
           <button
-            className="icon-button"
+            className={`record-button${isStopVisual ? " recording" : ""}${isBusyVisual ? " busy" : ""}`}
+            type="button"
+            onClick={handleRecordPress}
+            disabled={recorder.isBusy}
+            aria-label={recorder.status === "recording" ? "Stop recording" : "Start recording"}
+          />
+
+          <button
+            className={isPanelOpen ? "control active" : "control"}
             type="button"
             onClick={() => setIsPanelOpen((value) => !value)}
-            aria-label="Open controls"
+            aria-label="Script and settings"
+            aria-pressed={isPanelOpen}
           >
             <SlidersHorizontal size={22} />
-            <span>Panel</span>
           </button>
         </div>
 
@@ -408,72 +446,79 @@ function App() {
         />
       </section>
 
-      <aside className={isPanelOpen ? "control-panel open" : "control-panel"} aria-label="Script and overlay controls">
-        <button
-          className="panel-tab"
-          type="button"
-          onClick={() => setIsPanelOpen((value) => !value)}
-          aria-label={isPanelOpen ? "Close panel" : "Open panel"}
-        >
-          <PanelBottomOpen size={18} />
-        </button>
+      <div
+        className={isPanelOpen ? "panel-scrim show" : "panel-scrim"}
+        onClick={() => setIsPanelOpen(false)}
+        aria-hidden="true"
+      />
 
-        <div className="panel-section script-section">
-          <div className="section-heading">
-            <span>
-              <Captions size={18} />
-              Script
-            </span>
-            <button className="text-button" type="button" onClick={speech.reset}>
-              Reset speech
-            </button>
-          </div>
-          <textarea
-            value={script}
-            onChange={(event) => setScript(event.target.value)}
-            spellCheck="true"
-            aria-label="Sentence-by-sentence script"
-          />
+      <aside
+        className={isPanelOpen ? "control-panel open" : "control-panel"}
+        aria-label="Script and prompt settings"
+        aria-hidden={!isPanelOpen}
+      >
+        <button className="panel-grip" type="button" onClick={() => setIsPanelOpen(false)} aria-label="Close panel" />
+        <div className="panel-head">
+          <span className="panel-title">Prompt</span>
+          <button className="panel-close" type="button" onClick={() => setIsPanelOpen(false)} aria-label="Close panel">
+            <X size={19} />
+          </button>
         </div>
 
-        <div className="panel-section">
-          <div className="section-heading">
-            <span>
-              <Settings size={18} />
-              Overlay
-            </span>
-            <button className="text-button" type="button" onClick={() => setOverlay(DEFAULT_OVERLAY)}>
-              Reset
-            </button>
-          </div>
-          <SliderControl label="Width" value={overlay.width} min={36} max={96} unit="%" onChange={(width) => updateOverlay({ width })} />
-          <SliderControl label="Height" value={overlay.height} min={14} max={62} unit="%" onChange={(height) => updateOverlay({ height })} />
-          <SliderControl label="Left" value={overlay.x} min={0} max={92} unit="%" onChange={(x) => updateOverlay({ x })} />
-          <SliderControl label="Top" value={overlay.y} min={0} max={82} unit="%" onChange={(y) => updateOverlay({ y })} />
-          <SliderControl label="Text" value={overlay.fontSize} min={18} max={54} unit="px" onChange={(fontSize) => updateOverlay({ fontSize })} />
-          <SliderControl label="Length" value={overlay.cueLength} min={1} max={4} unit="cue" onChange={(cueLength) => updateOverlay({ cueLength })} />
-          <SliderControl label="Shade" value={overlay.opacity} min={36} max={96} unit="%" onChange={(opacity) => updateOverlay({ opacity })} />
-        </div>
+        <div className="panel-body">
+          <section className="panel-section script-section">
+            <div className="section-heading">
+              <span>Script</span>
+              <span className="meta">
+                {promptModel.totalWordCount} words · {scriptDuration}
+              </span>
+            </div>
+            <textarea
+              value={script}
+              onChange={(event) => setScript(event.target.value)}
+              spellCheck="true"
+              placeholder="Type or paste your script. One line per thought reads best."
+              aria-label="Script"
+            />
+          </section>
 
-        <div className="panel-section">
-          <div className="section-heading">
-            <span>
-              <Play size={18} />
-              Take
-            </span>
-            <span className="file-size">{formatBytes(recorder.mediaBlob?.size ?? 0)}</span>
-          </div>
-          <div className="take-actions">
-            <button className="solid-button" type="button" onClick={saveRecordingToGallery} disabled={!recorder.mediaBlob}>
-              <ImageDown size={18} />
-              Save to Gallery
-            </button>
-            <button className="solid-button ghost" type="button" onClick={downloadRecording} disabled={!recorder.mediaUrl}>
-              <Download size={18} />
-              Backup
-            </button>
-          </div>
-          {recorder.mimeType && <p className="codec-line">{recorder.mimeType}</p>}
+          <section className="panel-section">
+            <div className="section-heading">
+              <span>Overlay</span>
+              <button className="text-button" type="button" onClick={() => setOverlay(DEFAULT_OVERLAY)}>
+                Reset
+              </button>
+            </div>
+            <SliderControl label="Width" value={overlay.width} min={36} max={96} unit="%" onChange={(width) => updateOverlay({ width })} />
+            <SliderControl label="Height" value={overlay.height} min={14} max={62} unit="%" onChange={(height) => updateOverlay({ height })} />
+            <SliderControl label="Left" value={overlay.x} min={0} max={92} unit="%" onChange={(x) => updateOverlay({ x })} />
+            <SliderControl label="Top" value={overlay.y} min={0} max={82} unit="%" onChange={(y) => updateOverlay({ y })} />
+            <SliderControl label="Text size" value={overlay.fontSize} min={18} max={54} unit="px" onChange={(fontSize) => updateOverlay({ fontSize })} />
+            <SliderControl label="Lines" value={overlay.cueLength} min={1} max={4} unit="cue" onChange={(cueLength) => updateOverlay({ cueLength })} />
+            <SliderControl label="Shade" value={overlay.opacity} min={36} max={96} unit="%" onChange={(opacity) => updateOverlay({ opacity })} />
+          </section>
+
+          <section className="panel-section take-section">
+            <div className="section-heading">
+              <span>Latest take</span>
+              <span className="meta">{formatBytes(recorder.mediaBlob?.size ?? 0)}</span>
+            </div>
+            <div className="take-actions">
+              <button className="solid-button" type="button" onClick={saveRecordingToGallery} disabled={!recorder.mediaBlob}>
+                <ImageDown size={18} />
+                Save
+              </button>
+              <button className="solid-button ghost" type="button" onClick={downloadRecording} disabled={!recorder.mediaUrl}>
+                <Download size={18} />
+                Backup
+              </button>
+            </div>
+            {recorder.mimeType && <p className="codec-line">{recorder.mimeType}</p>}
+          </section>
+
+          <button className="text-button muted" type="button" onClick={speech.reset}>
+            Reset prompt tracking
+          </button>
         </div>
       </aside>
     </main>
@@ -496,12 +541,24 @@ function SentenceCue({
   return (
     <p className={isActive ? "sentence-cue active" : "sentence-cue"}>
       {sentence.words.map((word, index) => (
-        <span key={`${sentence.id}-${word}-${index}`} className={index < completedWords ? "word spoken" : "word"}>
-          {word}
+        <span key={`${sentence.id}-${word}-${index}`} className={wordClass(index, completedWords, isActive)}>
+          {word}{" "}
         </span>
       ))}
     </p>
   );
+}
+
+function wordClass(index: number, completedWords: number, isActive: boolean) {
+  if (index < completedWords) {
+    return "word spoken";
+  }
+
+  if (isActive && index === completedWords) {
+    return "word current";
+  }
+
+  return "word";
 }
 
 function SliderControl({
@@ -564,28 +621,30 @@ function ExportDialog({
     <div className="export-scrim" role="presentation">
       <section className="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
         <div className={isSaved ? "export-icon saved" : "export-icon"}>
-          {isSaved ? <CheckCircle size={28} /> : <ImageDown size={28} />}
+          {isSaved ? <CheckCircle size={26} /> : <ImageDown size={26} />}
         </div>
         <div className="export-copy">
           <p className="export-kicker">{fileSize}</p>
-          <h2 id="export-title">{isSaved ? "Saved" : "Save to Gallery"}</h2>
-          <p>{flow.error || flow.message || "Your take is ready."}</p>
+          <h2 id="export-title">{isSaved ? "Saved" : "Save your take"}</h2>
+          <p>{flow.error || flow.message || "Your take is ready to keep."}</p>
         </div>
 
         {isSaved ? (
-          <button className="solid-button wide" type="button" onClick={onNextTake}>
-            <RotateCcw size={18} />
-            Record another
-          </button>
+          <div className="export-actions">
+            <button className="solid-button wide" type="button" onClick={onNextTake}>
+              <RotateCcw size={18} />
+              Record another
+            </button>
+          </div>
         ) : (
           <div className="export-actions">
             <button className="solid-button wide" type="button" onClick={onSave} disabled={!hasRecording || isSaving}>
               <ImageDown size={18} />
-              {isSaving ? "Saving..." : "Save to Gallery"}
+              {isSaving ? "Saving..." : "Save to gallery"}
             </button>
-            <button className="solid-button ghost" type="button" onClick={onDownload} disabled={!hasRecording || isSaving}>
+            <button className="solid-button ghost wide" type="button" onClick={onDownload} disabled={!hasRecording || isSaving}>
               <Download size={18} />
-              Backup
+              Download backup
             </button>
             <button className="text-button muted" type="button" onClick={onDiscard} disabled={isSaving}>
               Discard take
@@ -611,8 +670,8 @@ function StatusRail({
   speechSupported: boolean;
 }) {
   const messages = [
-    !secureContext ? "Use HTTPS for iPhone camera and mic access." : "",
-    !speechSupported ? "Speech tracking is unavailable in this browser." : "",
+    !secureContext ? "Use HTTPS for camera and mic access." : "",
+    !speechSupported ? "Prompt tracking is unavailable in this browser." : "",
     recorderError,
     speechStatus === "error" ? speechError : "",
   ].filter(Boolean);
@@ -684,27 +743,21 @@ function formatBytes(bytes: number) {
   return `${megabytes.toFixed(megabytes > 100 ? 0 : 1)} MB`;
 }
 
-function getRecordLabel(status: string, hasSavedTake: boolean) {
-  if (hasSavedTake) {
-    return "Save take";
+function formatReadTime(wordCount: number) {
+  const seconds = Math.round(wordCount / WORDS_PER_SECOND);
+
+  if (seconds < 60) {
+    return `${seconds}s`;
   }
 
-  switch (status) {
-    case "requesting":
-      return "Arming";
-    case "starting":
-      return "Starting";
-    case "recording":
-      return "Stop";
-    case "finalizing":
-      return "Saving";
-    default:
-      return "Record";
-  }
+  return formatClock(seconds * 1000);
 }
 
-function getRecordAriaLabel(status: string) {
-  return status === "recording" ? "Stop recording" : "Start recording";
+function formatClock(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function clamp(value: number, min: number, max: number) {
